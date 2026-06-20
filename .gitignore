@@ -1,0 +1,171 @@
+# =========================================================
+# GO
+# =========================================================
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Build output
+bin/
+dist/
+build/
+
+# Coverage
+*.out
+coverage.out
+coverage.html
+
+# Vendor (hapus jika commit vendor)
+vendor/
+
+# Go workspace
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# =========================================================
+# NODE.JS
+# =========================================================
+
+# Dependencies
+node_modules/
+
+# Package Managers
+.pnpm-store/
+.npm/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Framework Builds
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+.parcel-cache/
+.cache/
+
+# Output
+dist/
+build/
+out/
+
+# Coverage
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =========================================================
+# PYTHON
+# =========================================================
+
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Type Checking
+.mypy_cache/
+.pytype/
+
+# Lint
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.python-version
+
+# =========================================================
+# COMMON
+# =========================================================
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# Temp Files
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# Editors
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated Media
+*.mp4
+*.mov
+*.avi
+*.wav
+*.mp3
+
+# Project Specific
+storage/
