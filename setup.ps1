@@ -1,221 +1,348 @@
 #!/usr/bin/env pwsh
-# SungClip Setup Script
-# Usage: .\setup.ps1
 
 $ErrorActionPreference = "Stop"
 
-# Colors
-$Green = "`e[32m"
-$Red = "`e[31m"
-$Yellow = "`e[33m"
-$Blue = "`e[34m"
-$Reset = "`e[0m"
+# ANSI Colors
+$Green = "$([char]27)[32m"
+$Red = "$([char]27)[31m"
+$Yellow = "$([char]27)[33m"
+$Blue = "$([char]27)[34m"
+$Reset = "$([char]27)[0m"
 
 function Write-Step {
     param([string]$Message)
-    Write-Host "`n$Blue▶ $Message$Reset" -NoNewline
+
+    Write-Host ""
+    Write-Host "$Blue[STEP] $Message$Reset"
 }
 
 function Write-Success {
     param([string]$Message)
-    Write-Host " $Green✓ $Message$Reset"
+
+    Write-Host "$Green[OK] $Message$Reset"
 }
 
-function Write-Error {
+function Exit-WithError {
     param([string]$Message)
-    Write-Host " $Red✗ $Message$Reset"
+
+    Write-Host "$Red[FAIL] $Message$Reset"
     exit 1
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "$Yellow  → $Message$Reset"
+
+    Write-Host "$Yellow -> $Message$Reset"
 }
 
 # ============================================
 # 0. CHECK PREREQUISITES
 # ============================================
+
 Write-Step "Checking prerequisites..."
 
-# Check Node.js
+# Node.js
 try {
     $nodeVersion = node --version 2>$null
     Write-Info "Node.js found: $nodeVersion"
-} catch {
-    Write-Error "Node.js is not installed. Please install Node.js first: https://nodejs.org/"
+}
+catch {
+    Exit-WithError "Node.js is not installed. Install from https://nodejs.org/"
 }
 
-# Check Go
+# Go
 try {
     $goVersion = go version 2>$null
     Write-Info "Go found: $goVersion"
-} catch {
-    Write-Error "Go is not installed. Please install Go first: https://go.dev/dl/"
+}
+catch {
+    Exit-WithError "Go is not installed. Install from https://go.dev/dl/"
 }
 
-# Check Python
+# Python
+$pythonCmd = $null
+
 try {
     $pyVersion = python --version 2>$null
+    $pythonCmd = "python"
     Write-Info "Python found: $pyVersion"
-} catch {
+}
+catch {
     try {
         $pyVersion = py --version 2>$null
-        Write-Info "Python found (via py): $pyVersion"
-    } catch {
-        Write-Error "Python is not installed. Please install Python first: https://python.org/"
+        $pythonCmd = "py"
+        Write-Info "Python found via py launcher: $pyVersion"
+    }
+    catch {
+        Exit-WithError "Python is not installed. Install from https://python.org/"
     }
 }
 
 Write-Success "All prerequisites found"
 
 # ============================================
-# 1. CREATE BIN DIRECTORY & DOWNLOAD BINARIES
+# 1. SETUP BIN DIRECTORY
 # ============================================
-Write-Step "Setting up bin directory..."
+
+Write-Step "Setting up binaries..."
 
 $binDir = Join-Path $PSScriptRoot "bin"
-New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
-# Check ffmpeg
+if (-not (Test-Path $binDir)) {
+    New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+}
+
+# --------------------------------------------
+# FFMPEG
+# --------------------------------------------
+
 $ffmpegPath = Join-Path $binDir "ffmpeg.exe"
+
 if (Test-Path $ffmpegPath) {
-    Write-Info "ffmpeg.exe already exists in bin/"
-} else {
-    Write-Info "Downloading ffmpeg.exe..."
-    # Download from gyandeev (reliable Windows builds)
+
+    Write-Info "ffmpeg.exe already exists"
+
+}
+else {
+
+    Write-Info "Downloading ffmpeg..."
+
     $ffmpegZip = Join-Path $env:TEMP "ffmpeg-release-essentials.zip"
-    $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-    
+    $extractDir = Join-Path $env:TEMP "sungclip-ffmpeg"
+
     try {
-        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $ffmpegZip -UseBasicParsing
-        Expand-Archive -Path $ffmpegZip -DestinationPath $env:TEMP -Force
-        
-        # Find the extracted folder
-        $extractedDir = Get-ChildItem -Path $env:TEMP -Directory -Filter "ffmpeg-*" | Select-Object -First 1
-        $ffmpegSrc = Join-Path $extractedDir.FullName "bin" "ffmpeg.exe"
-        
-        Copy-Item -Path $ffmpegSrc -Destination $ffmpegPath -Force
-        Remove-Item -Path $ffmpegZip -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $extractedDir.FullName -Recurse -Force -ErrorAction SilentlyContinue
-        
-        Write-Success "ffmpeg.exe downloaded to bin/"
-    } catch {
-        Write-Error "Failed to download ffmpeg. Please download manually from https://ffmpeg.org/download.html and place ffmpeg.exe in bin/"
+
+        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+
+        Invoke-WebRequest `
+            -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" `
+            -OutFile $ffmpegZip
+
+        Expand-Archive `
+            -Path $ffmpegZip `
+            -DestinationPath $extractDir `
+            -Force
+
+        $ffmpegExe = Get-ChildItem `
+            -Path $extractDir `
+            -Recurse `
+            -Filter "ffmpeg.exe" |
+            Select-Object -First 1
+
+        if (-not $ffmpegExe) {
+            throw "ffmpeg.exe not found"
+        }
+
+        Copy-Item `
+            -Path $ffmpegExe.FullName `
+            -Destination $ffmpegPath `
+            -Force
+
+        Remove-Item $ffmpegZip -Force -ErrorAction SilentlyContinue
+        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+
+        Write-Success "ffmpeg installed"
+    }
+    catch {
+        Exit-WithError "Failed downloading ffmpeg. $_"
     }
 }
 
-# Check yt-dlp
+# --------------------------------------------
+# yt-dlp
+# --------------------------------------------
+
 $ytDlpPath = Join-Path $binDir "yt-dlp.exe"
+
 if (Test-Path $ytDlpPath) {
-    Write-Info "yt-dlp.exe already exists in bin/"
-} else {
-    Write-Info "Downloading yt-dlp.exe..."
-    $ytDlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-    
+
+    Write-Info "yt-dlp.exe already exists"
+
+}
+else {
+
+    Write-Info "Downloading yt-dlp..."
+
     try {
-        Invoke-WebRequest -Uri $ytDlpUrl -OutFile $ytDlpPath -UseBasicParsing
-        Write-Success "yt-dlp.exe downloaded to bin/"
-    } catch {
-        Write-Error "Failed to download yt-dlp. Please download manually from https://github.com/yt-dlp/yt-dlp/releases and place yt-dlp.exe in bin/"
+
+        Invoke-WebRequest `
+            -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" `
+            -OutFile $ytDlpPath
+
+        Write-Success "yt-dlp installed"
+    }
+    catch {
+        Exit-WithError "Failed downloading yt-dlp. $_"
     }
 }
 
 Write-Success "Binaries ready"
 
 # ============================================
-# 2. SETUP PYTHON ENVIRONMENT
+# 2. PYTHON ENVIRONMENT
 # ============================================
+
 Write-Step "Setting up Python environment..."
 
 $pyDir = Join-Path $PSScriptRoot "scripts\transcript"
 $venvDir = Join-Path $pyDir ".venv"
 
-if (Test-Path $venvDir) {
-    Write-Info "Python venv already exists"
-} else {
-    Write-Info "Creating Python virtual environment..."
-    python -m venv $venvDir
-    Write-Success "Virtual environment created"
+if (-not (Test-Path $pyDir)) {
+    Write-Info "Python script directory not found, skipping"
 }
+else {
 
-# Activate venv and install requirements
-Write-Info "Installing Python dependencies..."
-$pipPath = Join-Path $venvDir "Scripts\pip.exe"
-$activatePath = Join-Path $venvDir "Scripts\Activate.ps1"
+    if (-not (Test-Path $venvDir)) {
 
-& $pipPath install --upgrade pip | Out-Null
+        Write-Info "Creating virtual environment..."
 
-$requirementsPath = Join-Path $pyDir "requirements.txt"
-if (Test-Path $requirementsPath) {
-    & $pipPath install -r $requirementsPath
-    Write-Success "Python dependencies installed"
-} else {
-    Write-Info "No requirements.txt found, skipping pip install"
+        & $pythonCmd -m venv $venvDir
+
+        Write-Success "Virtual environment created"
+    }
+    else {
+
+        Write-Info "Virtual environment already exists"
+    }
+
+    $pipPath = Join-Path $venvDir "Scripts\pip.exe"
+
+    if (Test-Path $pipPath) {
+
+        Write-Info "Updating pip..."
+
+        & $pipPath install --upgrade pip
+
+        $requirementsPath = Join-Path $pyDir "requirements.txt"
+
+        if (Test-Path $requirementsPath) {
+
+            Write-Info "Installing Python dependencies..."
+
+            & $pipPath install -r $requirementsPath
+
+            Write-Success "Python dependencies installed"
+        }
+        else {
+
+            Write-Info "requirements.txt not found"
+        }
+    }
 }
 
 # ============================================
-# 3. SETUP REMOTION (NODE.JS)
+# 3. REMOTION
 # ============================================
-Write-Step "Setting up Remotion (Node.js)..."
+
+Write-Step "Setting up Remotion..."
 
 $remotionDir = Join-Path $PSScriptRoot "remotion"
-Set-Location $remotionDir
 
-if (Test-Path (Join-Path $remotionDir "node_modules")) {
-    Write-Info "node_modules already exists"
-} else {
-    Write-Info "Running npm install... (this may take a while)"
-    npm install
-    Write-Success "Node dependencies installed"
+if (Test-Path $remotionDir) {
+
+    Push-Location $remotionDir
+
+    try {
+
+        if (Test-Path "node_modules") {
+
+            Write-Info "node_modules already exists"
+        }
+        else {
+
+            Write-Info "Running npm install..."
+
+            npm install
+
+            Write-Success "Node dependencies installed"
+        }
+    }
+    finally {
+
+        Pop-Location
+    }
+}
+else {
+
+    Write-Info "remotion directory not found, skipping"
 }
 
-Set-Location $PSScriptRoot
+# ============================================
+# 4. GO BUILD
+# ============================================
 
-# ============================================
-# 4. SETUP GO MODULES & BUILD
-# ============================================
 Write-Step "Setting up Go project..."
 
 Write-Info "Running go mod tidy..."
+
 go mod tidy
 
-Write-Info "Building SungClip..."
-go build -o sungclip.exe .
-
-Write-Success "Go project built successfully (sungclip.exe)"
-
-# ============================================
-# 5. FINAL CHECKS
-# ============================================
-Write-Step "Running final checks..."
-
-# Verify binaries
-$ffmpegCheck = & $ffmpegPath -version 2>$null | Select-Object -First 1
-Write-Info "ffmpeg: $ffmpegCheck"
-
-$ytDlpCheck = & $ytDlpPath --version 2>$null
-Write-Info "yt-dlp: $ytDlpCheck"
-
-# Verify Go binary
-$goBinPath = Join-Path $PSScriptRoot "sungclip.exe"
-if (Test-Path $goBinPath) {
-    Write-Info "SungClip binary: OK"
+if ($LASTEXITCODE -ne 0) {
+    Exit-WithError "go mod tidy failed"
 }
 
-Write-Success "All checks passed!"
+Write-Info "Building SungClip..."
+
+go build -o sungclip.exe .
+
+if ($LASTEXITCODE -ne 0) {
+    Exit-WithError "go build failed"
+}
+
+Write-Success "SungClip built successfully"
+
+# ============================================
+# 5. VERIFY
+# ============================================
+
+Write-Step "Running final checks..."
+
+try {
+    $ffmpegVersion = & $ffmpegPath -version 2>$null | Select-Object -First 1
+    Write-Info "ffmpeg: $ffmpegVersion"
+}
+catch {
+    Write-Info "ffmpeg verification skipped"
+}
+
+try {
+    $ytVersion = & $ytDlpPath --version
+    Write-Info "yt-dlp: $ytVersion"
+}
+catch {
+    Write-Info "yt-dlp verification skipped"
+}
+
+$sungclipBinary = Join-Path $PSScriptRoot "sungclip.exe"
+
+if (Test-Path $sungclipBinary) {
+    Write-Info "sungclip.exe found"
+}
+else {
+    Exit-WithError "sungclip.exe missing"
+}
+
+Write-Success "All checks passed"
 
 # ============================================
 # DONE
 # ============================================
-Write-Host "`n$Green========================================$Reset"
-Write-Host "$Green  ✅ SungClip setup complete!$Reset"
+
+Write-Host ""
 Write-Host "$Green========================================$Reset"
-Write-Host "`nNext steps:"
-Write-Host "  1. Configure your settings (if needed)"
-Write-Host "  2. Run: $Blue.\sungclip.exe$Reset"
-Write-Host "`nFolder structure:"
-Write-Host "  $Yellow📁 bin/$Reset         - ffmpeg.exe, yt-dlp.exe"
-Write-Host "  $Yellow📁 remotion/$Reset    - Video templates (Node.js/Remotion)"
-Write-Host "  $Yellow📁 scripts/transcript/$Reset - Transcription scripts (Python)"
-Write-Host "  $Yellow📁 internal/$Reset    - Go source code"
-Write-Host "  $Yellow📄 sungclip.exe$Reset  - Main application`n"
+Write-Host "$Green[DONE] SungClip setup complete!$Reset"
+Write-Host "$Green========================================$Reset"
+Write-Host ""
+
+Write-Host "Next steps:"
+Write-Host "  1. Configure your settings"
+Write-Host "  2. Run: .\sungclip.exe"
+Write-Host ""
+
+Write-Host "Folder structure:"
+Write-Host "  bin\                  - ffmpeg.exe, yt-dlp.exe"
+Write-Host "  remotion\             - Remotion project"
+Write-Host "  scripts\transcript\   - Python scripts"
+Write-Host "  internal\             - Go source"
+Write-Host "  sungclip.exe          - Main binary"
+Write-Host ""
