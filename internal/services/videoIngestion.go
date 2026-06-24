@@ -72,7 +72,7 @@ func (s *services) ExtractAudio(videoPath string, outputDir string) error {
 
 func (s *services) Transcribe(audioPath string, outputPath string) error {
 	cmd := exec.Command(
-		s.utils.GetPyEXE(),
+		s.utils.GetPyEXETranscript(),
 		s.utils.GetPyTranscript(),
 		audioPath,
 		outputPath,
@@ -130,7 +130,8 @@ Untuk setiap clip:
 4. Judul harus dapat dibuktikan oleh isi clip.
 5. Caption harus merangkum isi clip.
 6. Jika title atau caption tidak sesuai dengan isi clip, clip dianggap gagal.
-7. Score 0-100
+7. Headline harus berisi satu kalimat yang menarik audience, dan sesuai dengan isi clip.
+8. Score 0-100
 
 Output HARUS berupa JSON valid.
 
@@ -140,8 +141,12 @@ Output HARUS berupa JSON valid.
     "end_ms": number,
     "score": number,
     "title": string,
+    "headline": string,
     "caption": string,
     "word_highlights": [
+      string
+    ],
+    "hastags": [
       string
     ]
   }

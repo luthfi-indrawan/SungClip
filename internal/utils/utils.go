@@ -23,6 +23,7 @@ const (
 	momentDir = "moment"
 	metadataDir = "metadata"
 	resultDir = "result"
+	faceTrackerDir = "face-tracker"
 )
 
 // dir builder
@@ -36,6 +37,10 @@ func (u *Utils) BuildAudioDir(name string) string {
 
 func (u *Utils) BuildTranscriptDir(name string) string {
 	return filepath.Join(u.cfg.StoragePath, name, transcriptDir)
+}
+
+func (u *Utils) BuildFaceTrackerDir(name string) string {
+	return filepath.Join(u.cfg.StoragePath, name, faceTrackerDir)
 }
 
 func (u *Utils) BuildPromptDir(name string) string {
@@ -67,12 +72,20 @@ func (u *Utils) GetFFMEPG() string {
 	return u.cfg.FFMPEG
 }
 
-func (u *Utils) GetPyEXE() string {
-	return u.cfg.PYEXE
+func (u *Utils) GetPyEXETranscript() string {
+	return u.cfg.PYEXETranscript
 }
 
 func (u *Utils) GetPyTranscript() string {
 	return u.cfg.PYTranscript
+}
+
+func (u *Utils) GetPyEXEFaceTracker() string {
+	return u.cfg.PYEXEFaceTracker
+}
+
+func (u *Utils) GetPyFaceTracker() string {
+	return u.cfg.PYFaceTracker
 }
 
 // os utils

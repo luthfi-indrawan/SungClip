@@ -4,7 +4,6 @@ import (
 	"SungClip/internal/types"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"os/exec"
 )
@@ -22,7 +21,7 @@ func (s *services) ExpandDurationClip(startMS int64, endMS int64) (newStart int6
 	return startMS, endMS
 }
 
-func (s *services) GenerateMetadataVideo(title string, width int, height int, CompositionID string, videoPath string, caption string, words []types.Word, wordHighlights []string, outputPath string, startMS int64, endMS int64) error {
+func (s *services) GenerateMetadataVideo(title string, width int, height int, CompositionID string, videoPath string, caption string, words []types.Word, wordHighlights []string, outputPath string, startMS int64, endMS int64, faceTrackerMetadata types.FaceTrackerMetadata) error {
 	var subtitle []types.Word
 
 	for _, word := range words {
@@ -40,24 +39,20 @@ func (s *services) GenerateMetadataVideo(title string, width int, height int, Co
 		}
 	}
 
-	var duration int
-
-	if len(subtitle) == 0 {
-		duration = 150
-	} else {
-		duration = int(math.Ceil((float64(subtitle[len(subtitle)-1].EndMS-subtitle[0].StartMS) / 1000) * 30))
-	}
-
 	metadataClip := types.MetadataClip{
 		Title: title,
-		Width: width,
-		Height: height,
-		Duration: duration,
+		FPS: int(faceTrackerMetadata.FPS),
+		TargetWidth: width,
+		TargetHeight: height,
+		OriWidth: int(faceTrackerMetadata.VideoWidth),
+		OriHeight: int(faceTrackerMetadata.VideoHeight),
+		TotalFrames: int(faceTrackerMetadata.TotalFrames),
 		CompositionID: CompositionID,
 		VideoPath: videoPath,
 		Caption: caption,
 		Subtitle: subtitle,
 		WordHighlights: wordHighlights,
+		FramesFaceTracker: faceTrackerMetadata.Frames,
 	}
 
 	metadataBytes, err := json.MarshalIndent(metadataClip, "", "  ")
@@ -88,6 +83,28 @@ func (s *services) CutVideo(inputPath string, outputPath string, startMS int64, 
 	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
+}
+
+func (s *services) FaceTracking(videoPath string, outputPath string) error {
+	cmd := exec.Command(
+		s.utils.GetPyEXEFaceTracker(),
+		s.utils.GetPyFaceTracker(),
+		videoPath,
+		outputPath,
+	)
+
+	cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+
+    if err := cmd.Run(); err != nil {
+        return err
+    }
+
+	if _, err := os.Stat(outputPath); err != nil {
+		return fmt.Errorf("face tracker file not found: %w", err)
+	}
+
+    return nil
 }
 
 func (s *services) ExecuteRemotion(inputPropsPath string, outputClipsPath string) error {

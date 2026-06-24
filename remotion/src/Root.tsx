@@ -8,22 +8,26 @@ export const Root: React.FC = () => {
       <Composition
         id="clip"
         component={ClipComposition}
-        fps={30}
         defaultProps={{
           title: "missing",
-          width: 0,
-          height: 0,
-          duration: 150,
+          target_width: 0,
+          target_height: 0,
+          ori_width: 0,
+          ori_height: 0,
+          total_frames: 300,
+          fps: 30,
           caption: "missing",
           video_path: "missing",
           subtitle: [],
           word_highlights: [],
+          frames_face_trackers: [],
         }}
         calculateMetadata={({ props }) => {
           return {
-            durationInFrames: props.duration,
-            width: props.width,
-            height: props.height,
+            durationInFrames: props.total_frames,
+            width: props.target_width,
+            height: props.target_height,
+            fps: props.fps,
           };
         }}
       />

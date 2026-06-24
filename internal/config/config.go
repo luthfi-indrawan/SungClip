@@ -18,6 +18,7 @@ const (
 
 	scriptsDir = "scripts"
 	transcriptDir = "transcript"
+	faceTrackerDir = "face-tracker"
 )
 
 type (
@@ -29,8 +30,10 @@ type (
 		// scripts
 		YTDLP        string
 		FFMPEG       string
-		PYEXE        string
+		PYEXETranscript        string
 		PYTranscript string
+		PYEXEFaceTracker        string
+		PYFaceTracker string
 	}
 )
 
@@ -46,7 +49,9 @@ func NewConfig() *Config {
 
 		YTDLP: filepath.Join(wd, binDir, ytdlp),
 		FFMPEG: filepath.Join(wd, binDir, ffmpeg),
-		PYEXE: filepath.Join(wd, scriptsDir, transcriptDir, ".venv", "Scripts", "python.exe"),
+		PYEXETranscript: filepath.Join(wd, scriptsDir, transcriptDir, ".venv", "Scripts", "python.exe"),
 		PYTranscript: filepath.Join(wd, scriptsDir, transcriptDir, "main.py"),
+		PYEXEFaceTracker: filepath.Join(wd, scriptsDir, faceTrackerDir, "venv", "Scripts", "python.exe"),
+		PYFaceTracker: filepath.Join(wd, scriptsDir, faceTrackerDir, "main.py"),
 	}
 }
