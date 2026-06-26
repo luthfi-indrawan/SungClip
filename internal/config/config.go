@@ -19,6 +19,7 @@ const (
 	scriptsDir = "scripts"
 	transcriptDir = "transcript"
 	faceTrackerDir = "face-tracker"
+	hookDir = "hook-tts"
 )
 
 type (
@@ -34,6 +35,8 @@ type (
 		PYTranscript string
 		PYEXEFaceTracker        string
 		PYFaceTracker string
+		PYEXEGenerateHook        string
+		PYGenerateHook string
 	}
 )
 
@@ -51,7 +54,9 @@ func NewConfig() *Config {
 		FFMPEG: filepath.Join(wd, binDir, ffmpeg),
 		PYEXETranscript: filepath.Join(wd, scriptsDir, transcriptDir, ".venv", "Scripts", "python.exe"),
 		PYTranscript: filepath.Join(wd, scriptsDir, transcriptDir, "main.py"),
-		PYEXEFaceTracker: filepath.Join(wd, scriptsDir, faceTrackerDir, "venv", "Scripts", "python.exe"),
+		PYEXEFaceTracker: filepath.Join(wd, scriptsDir, faceTrackerDir, ".venv", "Scripts", "python.exe"),
 		PYFaceTracker: filepath.Join(wd, scriptsDir, faceTrackerDir, "main.py"),
+		PYEXEGenerateHook: filepath.Join(wd, scriptsDir, hookDir, ".venv", "Scripts", "python.exe"),
+		PYGenerateHook: filepath.Join(wd, scriptsDir, hookDir, "main.py"),
 	}
 }

@@ -22,3 +22,11 @@ export const getFaceTracker = (
 
   return nearest;
 };
+
+export const getPrimaryTrack = (frame: Frame) => {
+  if (frame.tracks.length === 0) {
+    return null;
+  }
+
+  return [...frame.tracks].sort((a, b) => b.confidence - a.confidence)[0];
+};

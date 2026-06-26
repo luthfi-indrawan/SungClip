@@ -3,6 +3,7 @@ package services
 import (
 	"SungClip/internal/types"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,68 +11,103 @@ import (
 	"strings"
 )
 
-func (s *services) DownloadVideo(url string, outputDir string) (videoPath string, err error) {
+func (s *services) DownloadVideo(
+	ctx context.Context,
+	url string,
+	outputDir string,
+) (videoPath, infoVideoPath string, err error) {
+
 	outputTemplate := filepath.Join(outputDir, "%(title)s.%(ext)s")
 
-	cmd := exec.Command(
+	cmd := exec.CommandContext(
+		ctx,
 		s.utils.GetYTDLP(),
 		"-f", "bv*+ba/b",
 		"--restrict-filenames",
+		"--write-info-json",
 		"-o", outputTemplate,
 		"--print", "after_move:filepath",
 		url,
 	)
 
 	var stdout bytes.Buffer
+
 	cmd.Stdout = &stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", err
+		return "", "", fmt.Errorf("yt-dlp failed: %w", err)
 	}
 
-	// ambil videoPath nya
-	videoPath = strings.TrimSpace(stdout.String())
+	lines := strings.Split(
+		strings.TrimSpace(stdout.String()),
+		"\n",
+	)
 
-	// validasi output
+	videoPath = strings.TrimSpace(lines[len(lines)-1])
+
 	if videoPath == "" {
-		return "", fmt.Errorf("yt-dlp did not return output file path")
-	}
-	
-	if _, err := os.Stat(videoPath); err != nil {
-		return "", err
+		return "", "", fmt.Errorf("yt-dlp returned empty filepath")
 	}
 
-	return videoPath, nil
+	if _, err := os.Stat(videoPath); err != nil {
+		return "", "", fmt.Errorf("video file not found: %w", err)
+	}
+
+	infoVideoPath = strings.TrimSuffix(
+		videoPath,
+		filepath.Ext(videoPath),
+	) + ".info.json"
+
+	if _, err := os.Stat(infoVideoPath); err != nil {
+		return "", "", fmt.Errorf(
+			"metadata file not found: %s",
+			infoVideoPath,
+		)
+	}
+
+	return videoPath, infoVideoPath, nil
 }
 
-func (s *services) ExtractAudio(videoPath string, outputDir string) error {
-	cmd := exec.Command(
-		s.utils.GetFFMEPG(),
+func (s *services) ExtractAudio(
+	ctx context.Context,
+	videoPath string,
+	outputPath string,
+) error {
+
+	cmd := exec.CommandContext(
+		ctx,
+		s.utils.GetFFMPEG(),
 		"-y",
 		"-i", videoPath,
 		"-ar", "16000",
 		"-ac", "1",
 		"-c:a", "pcm_s16le",
-		outputDir,
+		outputPath,
 	)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return err
+		return fmt.Errorf("ffmpeg extract audio failed: %w", err)
 	}
 
-	if _, err := os.Stat(outputDir); err != nil {
-		return err
+	if _, err := os.Stat(outputPath); err != nil {
+		return fmt.Errorf("audio file not found: %w", err)
 	}
 
 	return nil
 }
 
-func (s *services) Transcribe(audioPath string, outputPath string) error {
-	cmd := exec.Command(
+func (s *services) Transcribe(
+	ctx context.Context,
+	audioPath string,
+	outputPath string,
+) error {
+
+	cmd := exec.CommandContext(
+		ctx,
 		s.utils.GetPyEXETranscript(),
 		s.utils.GetPyTranscript(),
 		audioPath,
@@ -79,25 +115,34 @@ func (s *services) Transcribe(audioPath string, outputPath string) error {
 	)
 
 	cmd.Stdout = os.Stdout
-    cmd.Stderr = os.Stderr
+	cmd.Stderr = os.Stderr
 
-    if err := cmd.Run(); err != nil {
-        return err
-    }
-
-	if _, err := os.Stat(outputPath); err != nil {
-		return fmt.Errorf("transcript file not found: %w", err)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("transcribe failed: %w", err)
 	}
 
-    return nil
+	if _, err := os.Stat(outputPath); err != nil {
+		return fmt.Errorf(
+			"transcript file not found: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
-func (s *services) BuildPrompt(transcript types.TranscriptResult) string {
+func (s *services) BuildPrompt(
+	metadataVideo types.MetadataVideo,
+	clipsCount, minDuration, maxDuration int,
+) string {
+
 	var b strings.Builder
 
-	b.WriteString(`Kamu adalah content strategist profesional untuk TikTok, Reels, dan YouTube Shorts.
+	fmt.Fprintf(
+		&b,
+		`Kamu adalah content strategist profesional untuk TikTok, Reels, dan YouTube Shorts.
 
-Tugasmu adalah mencari 5 bagian terbaik dari transcript berikut.
+Tugasmu adalah mencari %d bagian terbaik dari transcript berikut.
 
 Tujuan:
 - menemukan clip yang menarik
@@ -120,7 +165,7 @@ PENTING:
 - Pilih waktu mulai yang sedekat mungkin dengan awal hook.
 - Pilih waktu selesai yang sedekat mungkin dengan akhir poin utama.
 - Jangan memilih clip yang terlalu panjang.
-- Durasi ideal 60-120 detik.
+- Durasi ideal %d-%d detik.
 
 Untuk setiap clip:
 
@@ -130,7 +175,7 @@ Untuk setiap clip:
 4. Judul harus dapat dibuktikan oleh isi clip.
 5. Caption harus merangkum isi clip.
 6. Jika title atau caption tidak sesuai dengan isi clip, clip dianggap gagal.
-7. Headline harus berisi satu kalimat yang menarik audience, dan sesuai dengan isi clip.
+7. Headline harus berisi satu kalimat yang menarik audience bahkan clipbait yang buat orang penasaran namun sesuai dengan isi clip.
 8. Score 0-100
 
 Output HARUS berupa JSON valid.
@@ -146,41 +191,35 @@ Output HARUS berupa JSON valid.
     "word_highlights": [
       string
     ],
-    "hastags": [
+    "hashtags": [
       string
     ]
   }
 ]
 
-Transcript:
-`)
+Informasi video:
+- title: %s
+- channel: %s
 
-	for _, segment := range transcript {
+Output HARUS berupa JSON valid.
+
+`,
+		clipsCount,
+		minDuration,
+		maxDuration,
+		metadataVideo.Title,
+		metadataVideo.Channel,
+	)
+
+	for _, segment := range metadataVideo.TranscriptResult {
 		fmt.Fprintf(
 			&b,
 			"\n[%d - %d]\n%s\n",
 			segment.StartMS,
-        	segment.EndMS,
+			segment.EndMS,
 			segment.Text,
 		)
 	}
 
 	return b.String()
-}
-
-func (s *services) formatDuration(ms int64) string {
-	totalSeconds := ms / 1000
-
-	hours := totalSeconds / 3600
-	minutes := (totalSeconds % 3600) / 60
-	seconds := totalSeconds % 60
-	milliseconds := ms % 1000
-
-	return fmt.Sprintf(
-		"%02d:%02d:%02d.%03d",
-		hours,
-		minutes,
-		seconds,
-		milliseconds,
-	)
 }

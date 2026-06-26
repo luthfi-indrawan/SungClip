@@ -145,7 +145,7 @@ export const Subtitle = ({
           top: 0,
           right: 0,
 
-          width: 980,
+          width: 800,
           height: "100%",
 
           background:
@@ -163,7 +163,7 @@ export const Subtitle = ({
         top: 0,
         right: 0,
 
-        width: 980,
+        width: 800,
         height: "100%",
 
         display: "flex",

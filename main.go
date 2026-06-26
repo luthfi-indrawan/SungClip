@@ -18,12 +18,14 @@ import (
 var (
 	// Ingest flags
 	videoURL string
+	videoClipsCount int
+	videoMinDurationSecond int
+	videoMaxDurationSecond int
 
 	// Edit flags
 	editTitle         string
-	editWidth         int
-	editHeight        int
 	editCompositionID string
+	editResolution string
 )
 
 // ── Root Command ────────────────────────────────────────────────────
@@ -53,14 +55,20 @@ func init() {
 	// Ingest flags
 	videoIngestionCmd.Flags().StringVarP(&videoURL, "url", "u", "", "Video URL to ingest (required)")
 	_ = videoIngestionCmd.MarkFlagRequired("url")
+	videoIngestionCmd.Flags().IntVarP(&videoClipsCount, "clips", "c", 0, "Video Clips Count to ingest (required)")
+	_ = videoIngestionCmd.MarkFlagRequired("clips")
+	videoIngestionCmd.Flags().IntVarP(&videoMinDurationSecond, "min-duration", "n", 0, "Video Min Duration Second to ingest (required)")
+	_ = videoIngestionCmd.MarkFlagRequired("min-duration")
+	videoIngestionCmd.Flags().IntVarP(&videoMaxDurationSecond, "max-duration", "x", 0, "Video Max Duration Second to ingest (required)")
+	_ = videoIngestionCmd.MarkFlagRequired("max-duration")
 
 	// Edit flags
 	videoEditingCmd.Flags().StringVarP(&editTitle, "title", "t", "", "Title for the generated clips (required)")
-	videoEditingCmd.Flags().IntVarP(&editWidth, "width", "W", 1080, "Video width in pixels")
-	videoEditingCmd.Flags().IntVarP(&editHeight, "height", "H", 1920, "Video height in pixels")
 	videoEditingCmd.Flags().StringVarP(&editCompositionID, "comp", "c", "", "Composition ID from ingestion (required)")
+	videoEditingCmd.Flags().StringVarP(&editResolution, "resolution", "r", "", "Resolution for the generated clips (required)")
 	_ = videoEditingCmd.MarkFlagRequired("title")
 	_ = videoEditingCmd.MarkFlagRequired("comp")
+	_ = videoEditingCmd.MarkFlagRequired("resolution")
 
 	// Add subcommands
 	rootCmd.AddCommand(videoIngestionCmd)
@@ -87,6 +95,9 @@ func runVideoIngestion(cmd *cobra.Command, args []string) error {
 
 	req := &types.RequestVideoIngestion{
 		VideoURL: videoURL,
+		ClipsCount: videoClipsCount,
+		MinDurationSecond: videoMinDurationSecond,
+		MaxDurationSecond: videoMaxDurationSecond,
 	}
 
 	resp, err := ctrl.VideoIngestion(ctx, req)
@@ -112,9 +123,8 @@ func runVideoEditing(cmd *cobra.Command, args []string) error {
 
 	req := &types.RequestVideoEditing{
 		Title:         editTitle,
-		Width:         editWidth,
-		Height:        editHeight,
 		CompositionID: editCompositionID,
+		Resolution: editResolution,
 	}
 
 	resp, err := ctrl.VideoEditing(ctx, req)

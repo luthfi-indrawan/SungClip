@@ -3,16 +3,12 @@ package controllers
 import (
 	"SungClip/internal/types"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/gosimple/slug"
 )
 
 func (c *controllers) VideoEditing(
@@ -34,136 +30,157 @@ func (c *controllers) VideoEditing(
 		return nil, errors.New("invalid request: missing compostion id")
 	}
 
-	if request.Width <= 0 {
-		return nil, errors.New("invalid request: min width 1")
-	}
-
-	if request.Height <= 0 {
-		return nil, errors.New("invalid request: min height 1")
+	if request.Resolution == "" {
+		return nil, errors.New("invalid request: missing resolution")
 	}
 
 	log.Println("Request validated")
 
-	// build path or dir
-	transcriptPath := filepath.Join(c.utils.BuildTranscriptDir(request.Title), request.Title+".json")
-	// videoPath := filepath.Join(c.utils.BuildDownloadsDir(), request.Title+".webm")
-	momentsPath := filepath.Join(c.utils.BuildMomentDir(request.Title), request.Title+".json")
+	// load metadata video
+	baseName := c.utils.NormalizeTitle(request.Title)
+	metadataPath := filepath.Join(c.utils.BuildPromptDir(baseName), "metadata.json")
 
-	remotionPublicDir := c.utils.BuildRemotionPublicDir(request.Title)
+	var metadataVideo types.MetadataVideo
+	if err := c.utils.ReadAndParse(metadataPath, &metadataVideo); err != nil {
+		return nil, fmt.Errorf("failed read and parse: %w", err)
+	}
+
+	newWidth, newHeight, err := c.services.ParseResolution(metadataVideo.Width, metadataVideo.Height, request.Resolution)
+	if err != nil {
+		return nil, fmt.Errorf("failed parser resolution: %w", err)
+	}
+
+	metadataVideo.Width = newWidth
+	metadataVideo.Height = newHeight
+
+	// extract words
+	var words []types.Word
+	for _, segment := range metadataVideo.TranscriptResult {
+		words = append(words, segment.Words...)
+	}
+
+	// prepare dir
+	metadataClipsDir := c.utils.BuildMetadataDir(baseName)
+	if err := c.utils.MkdirAll(metadataClipsDir); err != nil {
+		return nil, fmt.Errorf("failed mkdir: %w", err)
+	}
+
+	remotionPublicDir := c.utils.BuildRemotionPublicDir(baseName)
 	if err := c.utils.MkdirAll(remotionPublicDir); err != nil {
 		return nil, fmt.Errorf("failed mkdir: %w", err)
 	}
 
-	metadataDir := c.utils.BuildMetadataDir(request.Title)
-	if err := c.utils.MkdirAll(metadataDir); err != nil {
-		return nil, fmt.Errorf("failed mkdir: %w", err)
-	}
-
-	faceTrackerDir := c.utils.BuildFaceTrackerDir(request.Title)
+	faceTrackerDir := c.utils.BuildFaceTrackerDir(baseName)
 	if err := c.utils.MkdirAll(faceTrackerDir); err != nil {
 		return nil, fmt.Errorf("failed mkdir: %w", err)
 	}
 
-	// load transcript
-	transcriptBytes, err := os.ReadFile(transcriptPath)
+	resultDir := c.utils.BuildResultDir(baseName)
+	if err := c.utils.MkdirAll(resultDir); err != nil {
+		return nil, fmt.Errorf("failed mkdir: %w", err)
+	}
+
+	// videoPath := filepath.Join(c.utils.BuildDownloadsDir(), baseName+".webm")
+
+	var metadataClipsPath []string
+	var outputPathClips []string
+
+	targetWidth, targetHeight, err := c.services.ParseCompositionResolution(request.CompositionID, request.Resolution)
 	if err != nil {
-		return nil, fmt.Errorf("failed read transcript file: %w", err)
+		return nil, fmt.Errorf("failed parse compotion resolution: %w", err)
 	}
 
-	var transcript types.TranscriptResult
-	if err := json.Unmarshal(transcriptBytes, &transcript); err != nil {
-		return nil, fmt.Errorf("failed unmarshal bytes transcript: %w", err)
-	}
+	for i, moment := range metadataVideo.MomentsForClip {
+		log.Printf("Processing clip %d/%d", i+1, len(metadataVideo.MomentsForClip))
 
-	// extract words
-	var words []types.Word
-	for _, segment := range transcript {
-		words = append(words, segment.Words...)
-	}
+		titleClip := c.utils.NormalizeTitle(moment.Title)
 
-	// load moment
-	momentBytes, err := os.ReadFile(momentsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed read moment file: %w", err)
-	}
+		outputMetadataClipPath := filepath.Join(metadataClipsDir, titleClip+".json")
+		// outputVideoClipPath := filepath.Join(remotionPublicDir, titleClip+".mp4")
+		outputAudioPath := filepath.Join(remotionPublicDir, titleClip+".mp3")
+		videoClipPathForMetadata := filepath.Join(baseName, titleClip+".mp4")
+		audioClipPathForMetadata := filepath.Join(baseName, titleClip+".mp3")
+		outputFaceTrackerPath := filepath.Join(faceTrackerDir, titleClip+".json")
 
-	var momentClips types.MomentClips
-	if err := json.Unmarshal(momentBytes, &momentClips); err != nil {
-		return nil, fmt.Errorf("failed unmarshal bytes transcript: %w", err)
-	}
+		log.Println("Cutting video")
 
-	var (
-		metadataPathClips []string
-		outputPathClips   []string
-	)
-
-	// looping moment clips
-	for i, momentClip := range momentClips {
-		newStart, newEnd := c.services.ExpandDurationClip(momentClip.StartMS, momentClip.EndMS)
-
-		log.Printf("Processing clip %d/%d | title=%s start=%d end=%d", i+1, len(momentClips), momentClip.Title, newStart, newEnd)
-
-		outputMetdataPath := filepath.Join(metadataDir, fmt.Sprintf("%02d_%s.json", i+1, c.SafeFilename(momentClip.Title)))
-		// outputVideoPath := filepath.Join(remotionPublicDir, fmt.Sprintf("%02d_%s.mp4", i+1, c.SafeFilename(momentClip.Title)))
-		outputVideoPublic := filepath.Join(request.Title, fmt.Sprintf("%02d_%s.mp4", i+1, c.SafeFilename(momentClip.Title)))
-		outputFaceTrackerPath := filepath.Join(faceTrackerDir, fmt.Sprintf("%02d_%s.json", i+1, c.SafeFilename(momentClip.Title))) 
-
-		log.Printf("Cutting video | from: %d to: %d", newStart, newEnd)
-
-		// if err := c.services.CutVideo(videoPath, outputVideoPath, newStart, newEnd); err != nil {
+		// if err := c.services.CutVideo(ctx, videoPath, outputVideoClipPath, newWidth, newHeight, moment.StartMS, moment.EndMS); err != nil {
 		// 	return nil, fmt.Errorf("failed cutting video: %w", err)
 		// }
 
-		log.Printf("Success cut video | title: %s", momentClip.Title)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 
-		log.Printf("Tracking face on video | from: %d to: %d", newStart, newEnd)
+		log.Println("Success cut video")
 
-		// if err := c.services.FaceTracking(outputVideoPath, outputFaceTrackerPath); err != nil {
+		log.Println("Tracking face on video")
+
+		// if err := c.services.FaceTracking(ctx, outputVideoClipPath, outputFaceTrackerPath); err != nil {
 		// 	return nil, fmt.Errorf("failed tracking face on video: %w", err)
 		// }
 
-		log.Printf("Face tracked | title: %s", momentClip.Title)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 
-		// load face tracker data
-		momentBytes, err := os.ReadFile(outputFaceTrackerPath)
+		var faceTracker types.FaceTrackerMetadata
+		if err := c.utils.ReadAndParse(outputFaceTrackerPath, &faceTracker); err != nil {
+			return nil, fmt.Errorf("failed read and parse: %w", err)
+		}
+
+		log.Println("Face tracked")
+
+		log.Println("Generate hook")
+
+		hookRes, err := c.services.GenerateHookAudio(ctx, moment.Headline, outputAudioPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed read face tracker file: %w", err)
+			return nil, fmt.Errorf("failed generate hook: %w", err)
 		}
 
-		var faceTrackerMetadata types.FaceTrackerMetadata
-		if err := json.Unmarshal(momentBytes, &faceTrackerMetadata); err != nil {
-			return nil, fmt.Errorf("failed unmarshal bytes: %w", err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
 		}
 
-		log.Printf("Generating metadata | title: %s...", momentClip.Title)
+		log.Println("Hook generated")
 
-		if err := c.services.GenerateMetadataVideo(
-			momentClip.Title, request.Width, request.Height, request.CompositionID, outputVideoPublic, momentClip.Caption,
-			words, momentClip.WordHighlights, outputMetdataPath, newStart, newEnd, faceTrackerMetadata,
-		); err != nil {
+		log.Println("Generate metadata")
+
+		if err := c.services.GenerateMetadataVideo(targetWidth, targetHeight, request.CompositionID, words, moment, faceTracker, *hookRes, videoClipPathForMetadata, audioClipPathForMetadata, outputMetadataClipPath); err != nil {
 			return nil, fmt.Errorf("failed generate metadata: %w", err)
 		}
 
-		log.Printf("Metadata generated | title: %s", momentClip.Title)
+		log.Println("Metadata generated")
 
-		metadataPathClips = append(metadataPathClips, outputMetdataPath)
+		outputPathClip := filepath.Join(resultDir, c.utils.NormalizeTitle(moment.Title)+".mp4")
 
-		outputPath := filepath.Join(c.utils.BuildResultDir(request.Title), fmt.Sprintf("%02d_%s.mp4", i+1, c.SafeFilename(momentClip.Title)))
-
-		outputPathClips = append(outputPathClips, outputPath)
+		metadataClipsPath = append(metadataClipsPath, outputMetadataClipPath)
+		outputPathClips = append(outputPathClips, outputPathClip)
 	}
 
 	// render remotion
 	log.Println("Starting remotion rendering...")
 
-	for i := 0; i < len(metadataPathClips); i++ {
-		metadataPath := metadataPathClips[i]
+	for i := 0; i < len(metadataClipsPath); i++ {
+		metadataPath := metadataClipsPath[i]
 		outputPath := outputPathClips[i]
 
 		log.Printf("Remotion render start | metadata=%s output=%s", metadataPath, outputPath)
 
-		if err := c.services.ExecuteRemotion(metadataPath, outputPath); err != nil {
+		if err := c.services.ExecuteRemotion(ctx, metadataPath, outputPath, request.CompositionID); err != nil {
 			return nil, fmt.Errorf("failed render clip %d: %w", i+1, err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
 		}
 
 		log.Printf("Remotion render completed | clip=%d output=%s", i+1, outputPath)
@@ -174,11 +191,7 @@ func (c *controllers) VideoEditing(
 
 	return &types.ResponseVideoEditing{
 		Title: request.Title,
-		TotalClips: len(metadataPathClips),
+		TotalClips: len(metadataClipsPath),
 		ResultVideoPath: strings.Join(outputPathClips, " | "),
 	}, nil
-}
-
-func (c *controllers) SafeFilename(name string) string {
-	return slug.MakeLang(name, "id")
 }

@@ -2,17 +2,21 @@ package services
 
 import (
 	"SungClip/internal/types"
+	"context"
 )
 
 type IServices interface {
-	DownloadVideo(url string, outputDir string) (videoPath string, err error)
-	ExtractAudio(videoPath string, outputDir string) error
-	Transcribe(audioPath string, outputPath string) error
-	BuildPrompt(transcript types.TranscriptResult) string
+	DownloadVideo(ctx context.Context, url string, outputDir string) (videoPath, infoVideoPath string, err error)
+	ExtractAudio(ctx context.Context, videoPath string, outputPath string) error
+	Transcribe(ctx context.Context, audioPath string, outputPath string) error
+	BuildPrompt(metadataVideo types.MetadataVideo, clipsCount, minDuration, maxDuration int) string
 
-	ExpandDurationClip(startMS int64, endMS int64) (newStart int64, newEnd int64)
-	GenerateMetadataVideo(title string, width int, height int, CompositionID string, videoPath string, caption string, words []types.Word, wordHighlights []string, outputPath string, startMS int64, endMS int64, faceTrackerMetadata types.FaceTrackerMetadata) error
-	CutVideo(inputPath string, outputPath string, startMS int64, endMS int64) error
-	FaceTracking(videoPath string, outputPath string) error
-	ExecuteRemotion(inputPropsPath string, outputClipsPath string) error
+	ParseResolution(width int, height int, resolution string) (newWidth int, newHeight int, err error)
+	ParseCompositionResolution(compositionID string, resolution string) (width int, height int, err error)
+
+	GenerateHookAudio(ctx context.Context, text string, outputPath  string) (*types.HookTTSResult, error)
+	CutVideo(ctx context.Context, inputPath string, outputPath string, width int, height int, startMS int64, endMS int64) error
+	FaceTracking(ctx context.Context, videoPath string, outputPath string) error
+	GenerateMetadataVideo(width int, height int, CompositionID string, words []types.Word, moment types.MomentClip, faceTrackerMetadata types.FaceTrackerMetadata, hook types.HookTTSResult, videoPathClip string, audioPathClip string, outputMetadataPath string) error
+	ExecuteRemotion(ctx context.Context, inputPropsPath string, outputClipsPath string, compostionID string) error
 }
